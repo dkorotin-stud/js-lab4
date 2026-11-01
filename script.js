@@ -1,7 +1,7 @@
 const tables = [
     {
         title: "Водії",
-        data: drivers,
+        dataKey: "drivers",
         columns: [
             { key: "id", name: "№" },
             { key: "name", name: "ПІБ", type: "text" },
@@ -15,7 +15,7 @@ const tables = [
     },
     {
         title: "Автомобілі",
-        data: cars,
+        dataKey: "cars",
         columns: [
             { key: "id", name: "№" },
             { key: "brand", name: "Марка", type: "text" },
@@ -29,7 +29,7 @@ const tables = [
     },
     {
         title: "Поїздки",
-        data: rides,
+        dataKey: "rides",
         columns: [
             { key: "id", name: "№" },
             { key: "from", name: "Звідки", type: "text" },
@@ -45,30 +45,31 @@ const tables = [
 
 const STORAGE_KEY = "taxi-data";
 
-function saveData() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ drivers, cars, rides }));
+if (!localStorage.getItem(STORAGE_KEY)) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(initialData));
 }
 
-function replaceArray(target, source) {
-    target.splice(0, target.length, ...source);
-}
+let state = loadData();
 
 function loadData() {
-    const json = localStorage.getItem(STORAGE_KEY);
-    if (!json) return;
-
     try {
-        const saved = JSON.parse(json);
-        replaceArray(drivers, saved.drivers);
-        replaceArray(cars, saved.cars);
-        replaceArray(rides, saved.rides);
+        return JSON.parse(localStorage.getItem(STORAGE_KEY));
     } catch (e) {
         console.error("Не вдалося прочитати дані з localStorage", e);
+        return { drivers: [], cars: [], rides: [] };
     }
 }
 
+function saveData() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function getRows(tableInfo) {
+    return state[tableInfo.dataKey];
+}
+
 function getDriverName(id) {
-    const driver = drivers.find(d => d.id === id);
+    const driver = state.drivers.find(d => d.id === id);
     return driver ? driver.name.split(" ")[0] : "-";
 }
 
@@ -86,8 +87,8 @@ function toInputDate(value) {
 
 const relations = {
     "Водії": [
-        { table: "Автомобілі", data: cars, key: "driverId" },
-        { table: "Поїздки", data: rides, key: "driverId" }
+        { table: "Автомобілі", dataKey: "cars", key: "driverId" },
+        { table: "Поїздки", dataKey: "rides", key: "driverId" }
     ]
 };
 
@@ -118,7 +119,7 @@ function showModal(message) {
 function deleteRow(tableInfo, item) {
     const links = relations[tableInfo.title] || [];
     const usedIn = links
-        .filter(link => link.data.some(row => row[link.key] === item.id))
+        .filter(link => state[link.dataKey].some(row => row[link.key] === item.id))
         .map(link => link.table);
 
     if (usedIn.length) {
@@ -126,8 +127,8 @@ function deleteRow(tableInfo, item) {
         return;
     }
 
-    const index = tableInfo.data.indexOf(item);
-    tableInfo.data.splice(index, 1);
+    const rows = getRows(tableInfo);
+    rows.splice(rows.indexOf(item), 1);
     saveData();
     renderAll();
 }
@@ -189,7 +190,7 @@ function createTable(columns) {
 }
 
 function renderRows(table, tableInfo) {
-    const rows = tableInfo.data.map(item => {
+    const rows = getRows(tableInfo).map(item => {
         const row = document.createElement("tr");
 
         tableInfo.columns.forEach(col => {
@@ -241,7 +242,7 @@ function createField(col) {
     }
 
     if (col.type === "driver") {
-        return createSelect(drivers.map(d => ({ value: d.id, text: d.name })));
+        return createSelect(state.drivers.map(d => ({ value: d.id, text: d.name })));
     }
 
     const input = document.createElement("input");
@@ -283,7 +284,7 @@ function createForm(tableInfo, onAdd) {
     form.addEventListener("submit", e => {
         e.preventDefault();
 
-        const ids = tableInfo.data.map(d => d.id);
+        const ids = getRows(tableInfo).map(d => d.id);
         const item = { id: ids.length ? Math.max(...ids) + 1 : 1 };
 
         tableInfo.columns.forEach(col => {
@@ -331,7 +332,7 @@ tables.forEach((tableInfo, i) => {
         if (oldForm) oldForm.remove();
 
         const form = createForm(tableInfo, item => {
-            tableInfo.data.push(item);
+            getRows(tableInfo).push(item);
             saveData();
             renderAll();
         });
@@ -352,10 +353,9 @@ function showTab(index) {
 
 window.addEventListener("storage", e => {
     if (e.key !== STORAGE_KEY) return;
-    loadData();
+    state = loadData();
     renderAll();
 });
 
-loadData();
 renderAll();
 showTab(0);
